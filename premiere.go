@@ -16,14 +16,38 @@ type PremiereXML struct {
 }
 
 type Sequence struct {
-	UUID     string    `xml:"uuid"`
-	Duration int64     `xml:"duration"`
-	Rate     *Rate     `xml:"rate"`
-	Name     string    `xml:"name"`
-	Media    *Media    `xml:"media"`
-	Timecode *Timecode `xml:"timecode"`
-	Markers  []*Marker `xml:"marker"`
-	Labels   []*Label  `xml:"labels"`
+	UUID                                  string    `xml:"uuid"`
+	Duration                              int64     `xml:"duration"`
+	Rate                                  *Rate     `xml:"rate"`
+	Name                                  string    `xml:"name"`
+	Media                                 *Media    `xml:"media"`
+	Timecode                              *Timecode `xml:"timecode"`
+	Markers                               []*Marker `xml:"marker"`
+	Labels                                []*Label  `xml:"labels"`
+	TLSQAudioVisibleBase                  string    `xml:"TL.SQAudioVisibleBase,attr"`
+	TLSQVideoVisibleBase                  string    `xml:"TL.SQVideoVisibleBase,attr"`
+	TLSQVisibleBaseTime                   string    `xml:"TL.SQVisibleBaseTime,attr"`
+	TLSQAVDividerPosition                 string    `xml:"TL.SQAVDividerPosition,attr"`
+	TLSQHideShyTracks                     string    `xml:"TL.SQHideShyTracks,attr"`
+	TLSQHeaderWidth                       string    `xml:"TL.SQHeaderWidth,attr"`
+	MonitorProgramZoomOut                 string    `xml:"Monitor.ProgramZoomOut,attr"`
+	MonitorProgramZoomIn                  string    `xml:"Monitor.ProgramZoomIn,attr"`
+	TLSQTimePerPixel                      string    `xml:"TL.SQTimePerPixel,attr"`
+	MZEditLine                            string    `xml:"MZ.EditLine,attr"`
+	MZSequencePreviewFrameSizeHeight      string    `xml:"MZ.Sequence.PreviewFrameSizeHeight,attr"`
+	MZSequencePreviewFrameSizeWidth       string    `xml:"MZ.Sequence.PreviewFrameSizeWidth,attr"`
+	MZSequenceAudioTimeDisplayFormat      string    `xml:"MZ.Sequence.AudioTimeDisplayFormat,attr"`
+	MZSequencePreviewRenderingClassID     string    `xml:"MZ.Sequence.PreviewRenderingClassID,attr"`
+	MZSequencePreviewRenderingPresetCodec string    `xml:"MZ.Sequence.PreviewRenderingPresetCodec,attr"`
+	MZSequencePreviewRenderingPresetPath  string    `xml:"MZ.Sequence.PreviewRenderingPresetPath,attr"`
+	MZSequencePreviewUseMaxRenderQuality  string    `xml:"MZ.Sequence.PreviewUseMaxRenderQuality,attr"`
+	MZSequencePreviewUseMaxBitDepth       string    `xml:"MZ.Sequence.PreviewUseMaxBitDepth,attr"`
+	MZSequenceEditingModeGUID             string    `xml:"MZ.Sequence.EditingModeGUID,attr"`
+	MZSequenceVideoTimeDisplayFormat      string    `xml:"MZ.Sequence.VideoTimeDisplayFormat,attr"`
+	MZWorkOutPoint                        string    `xml:"MZ.WorkOutPoint,attr"`
+	MZWorkInPoint                         string    `xml:"MZ.WorkInPoint,attr"`
+	MZZeroPoint                           string    `xml:"MZ.ZeroPoint,attr"`
+	ExplodedTracks                        string    `xml:"explodedTracks,attr"`
 }
 
 type Rate struct {
@@ -32,9 +56,14 @@ type Rate struct {
 }
 
 type Timecode struct {
-	Rate   *Rate  `xml:"rate"`
-	String string `xml:"string"`
-	Frame  int64  `xml:"frame"`
+	Rate          *Rate  `xml:"rate"`
+	String        string `xml:"string"`
+	Frame         int64  `xml:"frame"`
+	DisplayFormat string `xml:"displayformat"`
+	Reel          *Reel  `xml:"reel"`
+}
+type Reel struct {
+	Name string `xml:"name"`
 }
 
 type Marker struct {
@@ -59,9 +88,24 @@ type Video struct {
 }
 
 type Audio struct {
-	Format           *Format  `xml:"format"`
-	Tracks           []*Track `xml:"track"`
-	NumOutputChannes int      `xml:"numOutputChannels"`
+	Format            *Format  `xml:"format"`
+	Tracks            []*Track `xml:"track"`
+	NumOutputChannels int      `xml:"numOutputChannels"`
+	Outputs           *Outputs `xml:"outputs"`
+}
+
+type Outputs struct {
+	Groups []*Group `xml:"group"`
+}
+
+type Group struct {
+	Index       int      `xml:"index"`
+	NumChannels int      `xml:"numchannels"`
+	Downmix     int      `xml:"downmix"`
+	Channel     *Channel `xml:"channel"`
+}
+type Channel struct {
+	Index int `xml:"index"`
 }
 
 type Format struct {
@@ -69,8 +113,42 @@ type Format struct {
 }
 
 type SampleCharacteristics struct {
-	Depth      int64 `xml:"depth"`
-	SampleRate int64 `xml:"samplerate"`
+	Depth            int64  `xml:"depth"`
+	SampleRate       int64  `xml:"samplerate"`
+	Codec            *Codec `xml:"codec"`
+	Width            int    `xml:"width"`
+	Height           int    `xml:"height"`
+	Anamorphic       bool   `xml:"anamorphic"`
+	PixelAspectRatio string `xml:"pixelaspectratio"`
+	FieldDominance   string `xml:"fielddominance"`
+	ColorDepth       int    `xml:"colordepth"`
+}
+
+type Codec struct {
+	Name            string           `xml:"name"`
+	AppSpecificData *AppSpecificData `xml:"appspecificdata"`
+}
+
+type AppSpecificData struct {
+	AppName         string   `xml:"appname"`
+	AppmMnufacturer string   `xml:"appmanufacturer"`
+	AppVersion      string   `xml:"appversion"`
+	Data            *AppData `xml:"data"`
+}
+
+type AppData struct {
+	QTCodec *QTCodec `xml:"qtcodec"`
+}
+
+type QTCodec struct {
+	CodecName       string `xml:"codecname"`
+	CodecTypeName   string `xml:"codectypename"`
+	CodecTypeCode   string `xml:"codectypecode"`
+	CodecVendorCode string `xml:"codecvendorcode"`
+	SpacialQuality  int    `xml:"spatialquality"`
+	TemporalQuality int    `xml:"temporalquality"`
+	KeyframeRate    int    `xml:"keyframerate"`
+	DataRate        int    `xml:"datarate"`
 }
 
 type Track struct {
@@ -82,23 +160,27 @@ type Track struct {
 }
 
 type ClipItem struct {
-	Id             string       `xml:"id,attr"`
-	MasterClipId   string       `xml:"masterclipid"`
-	Name           string       `xml:"name"`
-	Enabled        bool         `xml:"enabled"`
-	Duration       int64        `xml:"duration"`
-	Rate           *Rate        `xml:"rate"`
-	Start          int64        `xml:"start"`        // In point within the sequence
-	End            int64        `xml:"end"`          // Out point within the sequence
-	In             int64        `xml:"in"`           // In point within the media file
-	Out            int64        `xml:"out"`          // Out point within the media file
-	PProTicksIn    int64        `xml:"pproTicksIn"`  // Premiere specific in point (use const to get seconds)
-	PProTicksInOut int64        `xml:"pproTicksOut"` // Premiere specific out point (use const to get seconds)
-	Label          *Label       `xml:"labels"`
-	File           *File        `xml:"file"`
-	LoggingInfo    *LoggingInfo `xml:"logginginfo"`
-	Links          []*Link      `xml:"link"`
-	SourceTrack    *SourceTrack `xml:"sourcetrack"`
+	Id               string       `xml:"id,attr"`
+	MasterClipId     string       `xml:"masterclipid"`
+	Name             string       `xml:"name"`
+	Enabled          bool         `xml:"enabled"`
+	Duration         int64        `xml:"duration"`
+	Rate             *Rate        `xml:"rate"`
+	AlphaType        string       `xml:"alphatype"`
+	Anamorphic       bool         `xml:"anamorphic"`
+	PixelAspectRatio string       `xml:"pixelaspectratio"`
+	Start            int64        `xml:"start"`        // In point within the sequence
+	End              int64        `xml:"end"`          // Out point within the sequence
+	In               int64        `xml:"in"`           // In point within the media file
+	Out              int64        `xml:"out"`          // Out point within the media file
+	PProTicksIn      int64        `xml:"pproTicksIn"`  // Premiere specific in point (use const to get seconds)
+	PProTicksInOut   int64        `xml:"pproTicksOut"` // Premiere specific out point (use const to get seconds)
+	Label            *Label       `xml:"labels"`
+	File             *File        `xml:"file"`
+	LoggingInfo      *LoggingInfo `xml:"logginginfo"`
+	Links            []*Link      `xml:"link"`
+	SourceTrack      *SourceTrack `xml:"sourcetrack"`
+	Sequence         *Sequence    `xml:"sequence"`
 }
 
 type File struct {
