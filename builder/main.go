@@ -1,14 +1,10 @@
-package main
+package builder
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"encoding/xml"
-	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
-	"log"
 	"os"
 	"path"
 
@@ -17,7 +13,7 @@ import (
 	premiere "github.com/palmdalian/premiere_xml"
 )
 
-type Timings struct {
+type Timing struct {
 	Start int64  `json:"start"`
 	End   int64  `json:"end"`
 	Rate  int64  `json:"rate"`
@@ -106,9 +102,9 @@ func (builder *PremiereBuilder) AddNewClipItem(clipType, filePath string, start,
 	builder.CurrentClip += 1
 }
 
-func (builder *PremiereBuilder) ProcessAudioTimings(timings []*Timings) {
+func (builder *PremiereBuilder) ProcessVideoTimings(timings []*Timing) {
 	for _, timing := range timings {
-		builder.AddNewClipItem("audio", timing.Path, timing.Start, timing.End, timing.Start, timing.Rate)
+		builder.AddNewClipItem("video", timing.Path, timing.Start, timing.End, timing.Start, timing.Rate)
 	}
 	if len(timings) > 0 {
 		builder.XML.Sequence.Rate.Timebase = timings[0].Rate
@@ -116,38 +112,24 @@ func (builder *PremiereBuilder) ProcessAudioTimings(timings []*Timings) {
 	}
 }
 
-func main() {
-	var jsonPath string
-	var outputPath string
-
-	flag.StringVar(&jsonPath, "i", "/tmp/test.json", "inputPath")
-	flag.StringVar(&outputPath, "o", "out.xml", "outputPath")
-	flag.Parse()
-
-	fd, err := os.Open(jsonPath)
-	defer fd.Close()
-	if err != nil {
-		log.Fatalf("Failed to open file: %v", err)
+func (builder *PremiereBuilder) ProcessAudioTimings(timings []*Timing) {
+	for _, timing := range timings {
+		builder.AddNewClipItem("audio", timing.Path, timing.Start, timing.End, timing.Start, timing.Rate)
 	}
+}
 
-	bytes, _ := ioutil.ReadAll(fd)
-	timings := []*Timings{}
-	json.Unmarshal(bytes, &timings)
-
-	builder, err := NewPremiereBuilder()
+func (builder *PremiereBuilder) SaveToPath(outputPath string) error {
+	file, err := os.Create(outputPath)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-
-	builder.ProcessAudioTimings(timings)
-
-	file, _ := os.Create(outputPath)
 
 	xmlWriter := io.Writer(file)
 
 	enc := xml.NewEncoder(xmlWriter)
 	enc.Indent("  ", "    ")
 	if err := enc.Encode(builder.XML); err != nil {
-		fmt.Printf("error: %v\n", err)
+		return err
 	}
+	return nil
 }
