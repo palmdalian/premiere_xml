@@ -14,10 +14,12 @@ import (
 )
 
 type Timing struct {
-	Start int64  `json:"start"`
-	End   int64  `json:"end"`
-	Rate  int64  `json:"rate"`
-	Path  string `json:"path"`
+	Start     int64  `json:"start"`
+	End       int64  `json:"end"`
+	Rate      int64  `json:"rate"`
+	StartTick string `json:"startTick"`
+	EndTick   string `json:"endTick"`
+	Path      string `json:"path"`
 }
 
 type PremiereBuilder struct {
