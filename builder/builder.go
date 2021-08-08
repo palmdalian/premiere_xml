@@ -8,7 +8,7 @@ import (
 	"os"
 	"path"
 
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
 
 	premiere "github.com/palmdalian/premiere_xml"
 )
@@ -23,12 +23,16 @@ type Timing struct {
 }
 
 type PremiereBuilder struct {
-	XML            *premiere.PremiereXML
-	ReferenceAudio *premiere.ClipItem
-	ReferenceVideo *premiere.ClipItem
-	Masterclips    map[string]string
-	CurrentClip    int64
-	FrameRate      int64
+	XML         *premiere.PremiereXML
+	Masterclips map[string]*MasterClip
+	CurrentClip int64
+	FrameRate   int64
+}
+
+type MasterClip struct {
+	id              string
+	File            *premiere.File
+	alreadyInserted bool
 }
 
 func newAudioClip() *premiere.ClipItem {
@@ -57,56 +61,82 @@ func NewPremiereBuilder() (*PremiereBuilder, error) {
 	if err := xml.Unmarshal(data, pxml); err != nil {
 		return nil, err
 	}
-	newID := uuid.NewV4()
+	newID := uuid.New()
 	pxml.Sequence.UUID = newID.String()
 	builder := &PremiereBuilder{
 		XML:         pxml,
-		Masterclips: make(map[string]string),
+		Masterclips: make(map[string]*MasterClip),
 		FrameRate:   pxml.Sequence.Rate.Timebase,
 	}
 	return builder, nil
 }
 
-func (builder *PremiereBuilder) AddNewClipItem(clipType, filePath string, start, end, insert, rate int64) {
-	tempClip := &premiere.ClipItem{}
+func (builder *PremiereBuilder) AddNewMasterclip(filePath string, masterFile *premiere.File) *MasterClip {
+	masterClip := &MasterClip{id: fmt.Sprintf("masterclip-%d", len(builder.Masterclips))}
+	masterClip.File = masterFile
+	builder.Masterclips[filePath] = masterClip
+	return masterClip
+}
+
+// masterClipFromFilePath return masterclip if already exists
+// otherwise use ffprobe to figure out file attributes
+func (builder *PremiereBuilder) masterClipFromFilePath(filePath string) *MasterClip {
+	masterClip, ok := builder.Masterclips[filePath]
+	if ok {
+		return masterClip
+	}
+	masterFile := masterFileFromFilePath(filePath, len(builder.Masterclips))
+	masterClip = builder.AddNewMasterclip(filePath, masterFile)
+	return masterClip
+}
+
+func (builder *PremiereBuilder) AddNewClipItem(clipType, name, filePath string, start, end, insert int64) {
+	var tempClip *premiere.ClipItem
 	var referenceTrack *premiere.Track
+	masterClip := builder.masterClipFromFilePath(filePath)
 	if clipType == "audio" {
 		tempClip = newAudioClip()
+		if masterClip.File.Media.Audio.NumOutputChannels > 1 {
+			tempClip.PremiereChannelType = "stereo"
+		}
 		referenceTrack = builder.XML.Sequence.Media.Audio.Tracks[0]
 	} else {
 		tempClip = newVideoClip()
+		builder.XML.Sequence.Media.Video.Format.SampleCharacteristics.Rate = masterClip.File.Rate
+		builder.XML.Sequence.Media.Video.Format.SampleCharacteristics.Width = masterClip.File.Media.Video.SampleCharacteristics.Width
+		builder.XML.Sequence.Media.Video.Format.SampleCharacteristics.Height = masterClip.File.Media.Video.SampleCharacteristics.Height
 		referenceTrack = builder.XML.Sequence.Media.Video.Tracks[0]
-
 	}
-	name := path.Base(filePath)
+
+	if name == "" {
+		name = path.Base(filePath)
+	}
 	tempClip.Name = name
 	tempClip.Id = fmt.Sprintf("clipitem-%v", builder.CurrentClip)
-	if clipName, ok := builder.Masterclips[name]; ok {
-		tempClip.MasterClipId = clipName
-	} else {
-		masterID := fmt.Sprintf("masterclip-%s", name)
-		tempClip.MasterClipId = masterID
-		builder.Masterclips[name] = masterID
+
+	tempClip.MasterClipId = masterClip.id
+	tempClip.File = masterClip.File
+	if masterClip.alreadyInserted {
+		tempClip.File = &premiere.File{Id: masterClip.File.Id}
 	}
-	tempClip.Rate.Timebase = rate
+
+	tempClip.Rate = masterClip.File.Rate
 	tempClip.In = start
 	tempClip.Out = end
+	tempClip.PProTicksIn = start * premiere.PProTicksConstant
+	tempClip.PProTicksInOut = end * premiere.PProTicksConstant
 	tempClip.Start = insert
 	tempClip.End = (insert + end - start)
-	tempClip.Duration = (end - start)
+	tempClip.Duration = masterClip.File.Duration
 
-	tempClip.File.Id = fmt.Sprintf("file-%v", builder.CurrentClip)
-	tempClip.File.Name = name
-	tempClip.File.Rate.Timebase = rate
-	tempClip.File.Timecode.Rate.Timebase = rate
-	tempClip.File.PathUrl = fmt.Sprintf("file://localhost%s", filePath)
+	masterClip.alreadyInserted = true
 	referenceTrack.ClipItems = append(referenceTrack.ClipItems, tempClip)
 	builder.CurrentClip += 1
 }
 
 func (builder *PremiereBuilder) ProcessVideoTimings(timings []*Timing) {
 	for _, timing := range timings {
-		builder.AddNewClipItem("video", timing.Path, timing.Start, timing.End, timing.Start, timing.Rate)
+		builder.AddNewClipItem("video", "", timing.Path, timing.Start, timing.End, timing.Start)
 	}
 	if len(timings) > 0 {
 		builder.XML.Sequence.Rate.Timebase = timings[0].Rate
@@ -116,7 +146,7 @@ func (builder *PremiereBuilder) ProcessVideoTimings(timings []*Timing) {
 
 func (builder *PremiereBuilder) ProcessAudioTimings(timings []*Timing) {
 	for _, timing := range timings {
-		builder.AddNewClipItem("audio", timing.Path, timing.Start, timing.End, timing.Start, timing.Rate)
+		builder.AddNewClipItem("audio", "", timing.Path, timing.Start, timing.End, timing.Start)
 	}
 }
 
@@ -128,10 +158,62 @@ func (builder *PremiereBuilder) SaveToPath(outputPath string) error {
 
 	xmlWriter := io.Writer(file)
 
+	header := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE xmeml>\n"
+	xmlWriter.Write([]byte((header)))
 	enc := xml.NewEncoder(xmlWriter)
-	enc.Indent("  ", "    ")
+	enc.Indent("", "    ")
 	if err := enc.Encode(builder.XML); err != nil {
 		return err
 	}
 	return nil
+}
+
+func masterFileFromFilePath(filePath string, fileNumber int) *premiere.File {
+	ffOut, err := getFFProbeOutput(filePath)
+	if err != nil {
+		fmt.Printf("Error getting clip attributes with ffprobe. File will be nil %v\n", err)
+		return nil
+	}
+
+	if len(ffOut.Streams) == 0 {
+		fmt.Printf("No streams found. File will be nil %v\n", err)
+		return nil
+	}
+
+	media := &premiere.Media{
+		Video: videoFromStreams(ffOut.Streams),
+		Audio: audioFromStreams(ffOut.Streams),
+	}
+
+	rate := int64(0)
+	ntsc := false
+	if media.Video != nil {
+		rate = media.Video.SampleCharacteristics.Rate.Timebase
+		ntsc = media.Video.SampleCharacteristics.Rate.NTSC
+	} else if media.Audio != nil {
+		rate = media.Audio.SampleCharacteristics.SampleRate
+	}
+
+	name := path.Base(filePath)
+	masterFile := &premiere.File{
+		Id:       fmt.Sprintf("file-%d", fileNumber),
+		Name:     name,
+		Duration: int64(ffOut.Format.Duration * float64(rate)),
+		Rate: &premiere.Rate{
+			Timebase: rate,
+			NTSC:     ntsc,
+		},
+		Timecode: &premiere.Timecode{
+			Rate: &premiere.Rate{
+				Timebase: rate,
+				NTSC:     ntsc,
+			},
+			String:        "00:00:00:00",
+			DisplayFormat: "NDF",
+		},
+		Media:   media,
+		PathUrl: fmt.Sprintf("file://localhost%s", filePath),
+	}
+
+	return masterFile
 }
